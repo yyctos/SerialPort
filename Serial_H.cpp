@@ -2,9 +2,9 @@
 /// 
 ///	@file    Serial_H.cpp    
 ///
-/// @brief   ����ͨ����Դ�ļ�,������ͨѶ���ṩwindows�����������봮�ڽ���ͨѶ
-/// �Ĺ��ܣ�ʹ��Windowsϵͳ�ṩ�Ĵ���API������
-/// @note ��Windowsϵͳ�£����ں�����ͨѶ�豸���ᱻ�����ļ�������
+/// @brief   串口通信类源文件,本串口通讯类提供windows操作环境下与串口进行通讯
+/// 的功能，使用Windows系统提供的串行API函数。
+/// @note 在Windows系统下，串口和其他通讯设备都会被当做文件来处理
 /// 
 /// 
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,9 +27,9 @@ bool SerialPort::OpenPort()
 	{
 		return true;
 	}
-	std::string com_port = "\\\\.\\COM3";//������Ը���ʵ��COM��������,�������õ�COM8
+	std::string com_port = "\\\\.\\COM3";//这里可以根据实际COM进行设置,这里是用的COM8
 	
-	//CreateFileA��Ӧ�������ݲ���ASCII�����ʽ��CreateFileW��Ӧ�������ݲ���UNICODE�����ʽ
+	//CreateFileA对应来往数据采用ASCII编码格式，CreateFileW对应来往数据采用UNICODE编码格式
 	m_ucom = CreateFileA(com_port.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (m_ucom == INVALID_HANDLE_VALUE)
 	{
@@ -41,26 +41,26 @@ bool SerialPort::OpenPort()
 
 bool SerialPort::InitPort()
 {
-	//�򿪴���
+	//打开串口
 	if (!OpenPort())
 	{
 		std::cout << "Open Serial Port Failed !!" << std::endl;
 		return false;
 	}
 
-	DCB dcb;//�ṹ��������ͣ�����������Ϣ�涨ʹ���������ͣ���ԱΪ������������ѡ�����������,����λ���ȵ�
+	DCB dcb;//结构体变量类型，串口设置信息规定使用数据类型，成员为串口连接设置选项，包括波特率,数据位长度等
 
 	memset(&dcb, 0X0, sizeof(dcb));
 	GetCommState(m_ucom,&dcb);
 
-	dcb.BaudRate = 115200;  //����������Ϊ115200
-	dcb.ByteSize = 8;       //8λ����λ            * 4-8��ѡ
-	dcb.StopBits = 1;       //��ֹͣλ             * 0:��ֹͣλ 1��һλֹͣλ 2����λֹͣλ
-	dcb.fParity = 0;        //��������żУ��       * 0����У�� 1��У��
-	dcb.fNull = 0;          //�������մ�           * 0�������� 1������
-	dcb.Parity = 0;         //������У��           * 0����У�� 1����У�� 2��żУ�� 3��mark 4:space
+	dcb.BaudRate = 115200;  //波特率设置为115200
+	dcb.ByteSize = 8;       //8位数据位            * 4-8可选
+	dcb.StopBits = 0;       //无停止位             * 0:1位停止位 1：1.5位停止位 2：2位停止位
+	dcb.fParity = 0;        //不进行奇偶校验       * 0：不校验 1：校验
+	dcb.fNull = 0;          //不允许空串           * 0：不允许 1：允许
+	dcb.Parity = 0;         //不进行校验           * 0：不校验 1：奇校验 2：偶校验 3：mark 4:space
 
-	//���ô���������Ϣ,��д�����С����Ĭ������
+	//设置串口连接信息,读写缓存大小采用默认设置
 	if (!SetCommState(m_ucom, &dcb))
 	{
 	
@@ -69,7 +69,7 @@ bool SerialPort::InitPort()
 	}
 
 	/*
-	//���ö�д��������С����ѡ�����ñ�ʾ����Ĭ������
+	//设置读写缓存器大小，可选，不用表示采用默认设置
 	if (!SetupComm(m_ucom, 1048576, 1048576))
 	{
 		std::cout << "Set the Size of Serial Receive Buffer and Send Buffer Failed, Error: " <<GetLastError()<< std::endl;
@@ -77,7 +77,7 @@ bool SerialPort::InitPort()
 	}
 	*/
 
-	//�����շ��ͽ��ջ�����
+	//最后清空发送接收缓存区
 	if (!PurgeComm(m_ucom, PURGE_TXCLEAR | PURGE_RXCLEAR))
 	{
 
@@ -89,17 +89,17 @@ bool SerialPort::InitPort()
 
 int SerialPort::ReadPort(void* addr,DWORD size,UINT timeout)
 {
-	COMMTIMEOUTS ReadCommTimeout;    //�ṹ��������ͣ��涨ʹ��ʱ���������ͣ����ͺͽ��չ��ã���Ա������ȡ�ַ������ʱ�䣬����ʱ���Multiplier of characters������ʲô��������
+	COMMTIMEOUTS ReadCommTimeout;    //结构体变量类型，规定使用时间数据类型，发送和接收共用，成员包括读取字符最大间隔时间，持续时间和Multiplier of characters（这是什么？）三类
 	memset(&ReadCommTimeout,0X0,sizeof(ReadCommTimeout));
 	ReadCommTimeout.ReadTotalTimeoutConstant = timeout;
 
-	//���ö�ȡ��������ʱʱ��
+	//设置读取缓存器超时时间
 	SetCommTimeouts(m_ucom,&ReadCommTimeout);
 
-	//���Դ洢ʵ�ʴӴ��ڶ�ȡ����DWORD��
+	//用以存储实际从串口读取到的DWORD数
 	DWORD dwReadBytes = 0;
 
-	//�ӻ�������ȡ����
+	//从缓存器读取数据
 	if (ReadFile(m_ucom, addr, size, &dwReadBytes, NULL))
 	{
 		return dwReadBytes;
@@ -113,16 +113,16 @@ int SerialPort::ReadPort(void* addr,DWORD size,UINT timeout)
 
 bool SerialPort::WritePort(void* addr, DWORD size, UINT timeout)
 {
-	COMMTIMEOUTS WriteCommTimeout;    //�ṹ��������ͣ����ͺͽ��չ��ã���Ա������ȡ�ַ������ʱ�䣬����ʱ���Multiplier of characters������ʲô��������
+	COMMTIMEOUTS WriteCommTimeout;    //结构体变量类型，发送和接收共用，成员包括读取字符最大间隔时间，持续时间和Multiplier of characters（这是什么？）三类
 	memset(&WriteCommTimeout, 0X0, sizeof(WriteCommTimeout));
 	WriteCommTimeout.WriteTotalTimeoutConstant = timeout;
 
-	//����д��������ʱʱ��
+	//设置写缓存器超时时间
 	SetCommTimeouts(m_ucom, &WriteCommTimeout);
 
 	DWORD dwWriteBytes = 0;
 
-	//�򻺴�����д����
+	//向缓存器中写数据
 	if (WriteFile(m_ucom, addr, size, &dwWriteBytes, NULL))
 	{
 		return true;
@@ -138,7 +138,7 @@ bool SerialPort::ClosePort()
 {
 	if (m_ucom != INVALID_HANDLE_VALUE)
 	{
-		//�ر��봮�ڶ�Ӧ������
+		//关闭与串口对应句柄句柄
 		return CloseHandle(m_ucom);
 	}
 	return true;
